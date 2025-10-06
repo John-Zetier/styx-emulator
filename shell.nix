@@ -1,4 +1,4 @@
-# Non-flake wrapper with the same toolchain/linker/runtime setup
+# Compatibility wrapper for non-flake users
 { pkgs ? import <nixpkgs> {
     overlays = [
       (import (builtins.fetchTarball {
@@ -8,47 +8,62 @@
   }
 }:
 
-let
-  llvm = pkgs.llvmPackages_18;
-  rustToolchain = pkgs.rust-bin.stable."1.90.0".default.override {
-    extensions = [ "rust-src" "rust-analyzer" "clippy" "rustfmt" ];
-  };
-  ccBin = "${llvm.clang}/bin/clang";
-  lldBinDir = "${llvm.lld}/bin";
-in
 pkgs.mkShell {
   buildInputs = with pkgs; [
-    rustToolchain
-    llvm.clang llvm.clang-unwrapped llvm.libclang llvm.stdenv llvm.lld
-
-    stdenv.cc.cc.lib
-
-    cmake ninja gnumake pkg-config protobuf
-    coreutils curl wget git direnv just which gnugrep findutils bash gnused
-    gdb python3
-    docker docker-client podman podman-compose
-    zlib cacert
+    # Rust toolchain
+    (rust-bin.stable.latest.default.override {
+      extensions = [ "rust-src" "rust-analyzer" "clippy" "rustfmt" ];
+    })
+    
+    # LLVM/Clang 18
+    llvmPackages_18.clang
+    llvmPackages_18.clang-unwrapped
+    llvmPackages_18.libclang
+    llvmPackages_18.stdenv
+    
+    # Build tools
+    cmake
+    ninja
+    gnumake
+    pkg-config
+    protobuf
     dtc
+    
+    # System tools
+    coreutils
+    curl
+    wget
+    git
+    direnv
+    just
+    which
+    gnugrep
+    findutils
+    bash
+    gnused
+    
+    # Development tools
+    gdb
+    python3
+    
+    # Container tools
+    docker
+    docker-client
+    podman
+    podman-compose
+    
+    # Libraries
+    zlib
+    cacert
   ];
 
-  LIBCLANG_PATH = "${llvm.libclang.lib}/lib";
-  RUST_SRC_PATH = "${rustToolchain}/lib/rustlib/src/rust/library";
-
-  # Ensure libstdc++ is available to host build scripts
-  LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [ pkgs.stdenv.cc.cc llvm.libclang ];
-
-  # Use clang + lld (no mold)
-  RUSTFLAGS    = "-Clinker=${ccBin} -C link-self-contained=no -Clink-arg=-fuse-ld=lld -Clink-arg=-Wl,--eh-frame-hdr";
-  RUSTDOCFLAGS = "-Clinker=${ccBin} -C link-self-contained=no -Clink-arg=-fuse-ld=lld -Clink-arg=-Wl,--eh-frame-hdr";
-
+  LIBCLANG_PATH = "${pkgs.llvmPackages_18.libclang.lib}/lib";
+  RUST_SRC_PATH = "${pkgs.rust-bin.stable.latest.default}/lib/rustlib/src/rust/library";
+  
   shellHook = ''
-    export PATH=${lldBinDir}:$PATH
-    export CC=${ccBin}
-    export CXX=${llvm.clang}/bin/clang++
-
     echo "Styx Emulator Development Environment (shell.nix)"
-    echo "Rust:  $(rustc --version)"
-    echo "Clang: $(clang --version | head -n1)"
-    command -v ld.lld >/dev/null && echo "lld:   $(ld.lld --version | head -n1)"
+    echo "Rust version: $(rustc --version)"
+    echo "Clang version: $(clang --version | head -n1)"
+    export STYX_ROOT="$PWD"
   '';
 }
